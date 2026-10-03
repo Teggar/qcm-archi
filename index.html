@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prépa Expert Sinistre</title>
+  <meta name="description" content="Préparation à l'entretien d'Expert Sinistre construction (Saretec) : vocabulaire, QCM, mises en situation chiffrées, réglementation environnementale.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="menu-btn" id="menuBtn" aria-label="Ouvrir le menu">☰</button>
+    <a href="#/accueil" class="brand"><span class="brand-mark">ES</span> Prépa Expert Sinistre</a>
+    <button class="theme-btn" id="themeBtn" aria-label="Changer de thème" title="Thème clair / sombre">◐</button>
+  </header>
+
+  <nav class="sidebar" id="sidebar">
+    <a href="#/accueil" class="brand side-brand"><span class="brand-mark">ES</span> Prépa Expert Sinistre</a>
+    <ul>
+      <li><a href="#/accueil" data-page="accueil"><span class="ico">⌂</span>Accueil</a></li>
+      <li><a href="#/vocabulaire" data-page="vocabulaire"><span class="ico">Aa</span>Vocabulaire</a></li>
+      <li><a href="#/qcm" data-page="qcm"><span class="ico">✓</span>QCM</a></li>
+      <li><a href="#/cas" data-page="cas"><span class="ico">⌗</span>Mises en situation</a></li>
+      <li><a href="#/environnement" data-page="environnement"><span class="ico">♲</span>Environnement</a></li>
+      <li><a href="#/entretien" data-page="entretien"><span class="ico">☺</span>Entretien</a></li>
+    </ul>
+    <p class="side-foot">Contenus indicatifs à vérifier avec les textes en vigueur.</p>
+  </nav>
+  <div class="overlay" id="overlay"></div>
+
+  <main id="app" class="main"></main>
+
+  <script src="js/data/vocabulaire.js"></script>
+  <script src="js/data/questions.js"></script>
+  <script src="js/data/cas.js"></script>
+  <script src="js/data/environnement.js"></script>
+  <script src="js/data/entretien.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
