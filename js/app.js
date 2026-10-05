@@ -34,6 +34,10 @@
     QBY[q.id] = q;
   });
   const qOfNotion = (nid) => QUESTIONS.filter((q) => q.n === nid);
+  // Module Saretec / RH séparé : il ne se mélange pas aux tests techniques
+  const TECH = QUESTIONS.filter((q) => q.d !== "saretec");
+  const TECH_NOTIONS = NOTIONS.filter((n) => n.d !== "saretec");
+  const TECH_DOMS = Object.keys(DOMAINES).filter((d) => d !== "saretec");
   const LV = { 1: "Niv. 1 · fondamental", 2: "Niv. 2 · test", 3: "Niv. 3 · piège", 4: "Niv. 4 · situation" };
   const PRIO = { 1: "Fort rendement", 2: "Important", 3: "Secondaire" };
 
@@ -117,7 +121,7 @@
   const app = $("#app");
   const routes = {
     accueil: renderHome, express: renderExpress, qcm: renderQcm, session: renderSession, fiches: renderFiches,
-    cas: renderCas, environnement: renderEnv, vocabulaire: renderVocab, entretien: renderEntretien
+    cas: renderCas, environnement: renderEnv, vocabulaire: renderVocab, entretien: renderEntretien, saretec: renderSaretec
   };
   let timerInt = null;
   function router() {
@@ -173,7 +177,7 @@
     if (out.length < n) for (const q of list) { if (out.length >= n) break; if (!out.includes(q)) out.push(q); }
     return out;
   }
-  function adaptivePick(n, pool = QUESTIONS) {
+  function adaptivePick(n, pool = TECH) {
     const statusOf = {};
     NOTIONS.forEach((x) => { statusOf[x.id] = P.notionStat(x.id).status; });
     const W = { nonacquis: 60, fragile: 50, encours: 30, nonevalue: 25, acquis: 0 };
@@ -193,34 +197,34 @@
     const sumW = Object.values(EXAM_W).reduce((a, b) => a + b, 0);
     const out = [];
     Object.entries(EXAM_W).forEach(([d, w]) => {
-      const pool = shuffle(QUESTIONS.filter((q) => q.d === d)).sort((a, b) => (a.lv === 1) - (b.lv === 1));
+      const pool = shuffle(TECH.filter((q) => q.d === d)).sort((a, b) => (a.lv === 1) - (b.lv === 1));
       const quota = Math.round((w / sumW) * total);
       out.push(...pickMaxPerNotion(shuffle(pool.slice(0, Math.max(quota * 2, quota))), quota, 2));
     });
-    const rest = shuffle(QUESTIONS.filter((q) => !out.includes(q)));
+    const rest = shuffle(TECH.filter((q) => !out.includes(q)));
     while (out.length < total && rest.length) out.push(rest.pop());
     return shuffle(out.slice(0, total));
   }
   function positionPick() {
     const out = [];
-    Object.keys(DOMAINES).forEach((d) => {
-      const pool = shuffle(QUESTIONS.filter((q) => q.d === d));
+    TECH_DOMS.forEach((d) => {
+      const pool = shuffle(TECH.filter((q) => q.d === d));
       const pref = pool.filter((q) => q.lv === 2).concat(pool.filter((q) => q.lv === 3), pool.filter((q) => q.lv !== 2 && q.lv !== 3));
       out.push(...pickMaxPerNotion(pref, 2, 1));
     });
     return shuffle(out);
   }
   function expressPick(n) {
-    const weak = NOTIONS.filter((x) => x.p <= 2 && ["nonacquis", "fragile", "nonevalue"].includes(P.notionStat(x.id).status));
+    const weak = TECH_NOTIONS.filter((x) => x.p <= 2 && ["nonacquis", "fragile", "nonevalue"].includes(P.notionStat(x.id).status));
     const ids = new Set(weak.map((x) => x.id));
-    const pool = QUESTIONS.filter((q) => ids.has(q.n) && q.lv >= 2);
-    return adaptivePick(n, pool.length >= n ? pool : QUESTIONS.filter((q) => NOTION[q.n].p === 1));
+    const pool = TECH.filter((q) => ids.has(q.n) && q.lv >= 2);
+    return adaptivePick(n, pool.length >= n ? pool : TECH.filter((q) => NOTION[q.n].p === 1));
   }
   function errorsPick(n) {
-    const list = QUESTIONS.filter((q) => { const a = P.att[q.id]; return a && a.length && (!a[a.length - 1].ok || ["elim", "hasard"].includes(a[a.length - 1].c)); });
+    const list = TECH.filter((q) => { const a = P.att[q.id]; return a && a.length && (!a[a.length - 1].ok || ["elim", "hasard"].includes(a[a.length - 1].c)); });
     return shuffle(list).sort((a, b) => P.wrongCount(b.id) - P.wrongCount(a.id)).slice(0, n);
   }
-  const dueList = () => QUESTIONS.filter((q) => P.seen(q.id) && P.due(q.id));
+  const dueList = () => TECH.filter((q) => P.seen(q.id) && P.due(q.id));
 
   // =====================================================================
   // SESSIONS DE QUESTIONS
@@ -488,15 +492,15 @@
   }
   function renderHome(el) {
     const stats = {}; NOTIONS.forEach((n) => { stats[n.id] = P.notionStat(n.id).status; });
-    const counts = {}; ST_ORDER.forEach((k) => { counts[k] = 0; }); Object.values(stats).forEach((s) => counts[s]++);
-    const total = NOTIONS.length;
+    const counts = {}; ST_ORDER.forEach((k) => { counts[k] = 0; }); TECH_NOTIONS.forEach((n) => counts[stats[n.id]]++);
+    const total = TECH_NOTIONS.length;
     const pctAcq = Math.round(((counts.acquis + counts.encours * 0.5) / total) * 100);
     const due = dueList().length;
-    const recur = QUESTIONS.filter((q) => P.wrongCount(q.id) >= 2);
-    const answered = Object.keys(P.att).length;
+    const recur = TECH.filter((q) => P.wrongCount(q.id) >= 2);
+    const answered = TECH.filter((q) => P.seen(q.id)).length;
     const hist = store.get("sessions", []).slice(-5).reverse();
-    const fragileN = NOTIONS.filter((n) => ["fragile", "nonacquis"].includes(stats[n.id])).sort((a, b) => a.p - b.p);
-    const murs = shuffle(NOTIONS.filter((n) => n.p === 1 && n.f.mur).flatMap((n) => n.f.mur)).slice(0, 6);
+    const fragileN = TECH_NOTIONS.filter((n) => ["fragile", "nonacquis"].includes(stats[n.id])).sort((a, b) => a.p - b.p);
+    const murs = shuffle(TECH_NOTIONS.filter((n) => n.p === 1 && n.f.mur).flatMap((n) => n.f.mur)).slice(0, 6);
     el.append(h(`
       <h1>Préparation Télé-Expert / Expert sinistre bâtiment</h1>
       <p class="lead">Test ~80 questions → entretien manager → entretien RH. Objectif : maximiser ce qui est testé, en une journée.</p>
@@ -507,7 +511,7 @@
         <div class="card stat"><div class="num">${due + fragileN.length}</div><div class="lbl">à revoir aujourd'hui</div></div>
       </div>
       <div class="card">
-        <div class="row"><b>Profil de connaissances (${total} notions)</b><span class="spacer"></span><span class="small muted">${answered} questions déjà travaillées / ${QUESTIONS.length}</span></div>
+        <div class="row"><b>Profil de connaissances (${total} notions)</b><span class="spacer"></span><span class="small muted">${answered} questions déjà travaillées / ${TECH.length}</span></div>
         ${stackBar(counts, total)}
         <div class="legend-inline small">${ST_ORDER.map((k) => `<span><i class="dot ${ST[k].c}"></i>${ST[k].l} : ${counts[k]}</span>`).join("")}</div>
       </div>
@@ -522,8 +526,10 @@
         <a class="card action-card card-link urgent" href="#/express"><h3>⚡ Dernières 2 heures</h3><p class="small muted">La veille / le matin : uniquement l'essentiel et vos lacunes.</p></a>
       </div>
 
-      <h2>Progression par domaine</h2>
-      <div class="card dom-list">${Object.entries(DOMAINES).map(([d, l]) => {
+      ${saretecDash()}
+
+      <h2>Progression par domaine (test technique)</h2>
+      <div class="card dom-list">${TECH_DOMS.map((d) => [d, DOMAINES[d]]).map(([d, l]) => {
         const ns = NOTIONS.filter((n) => n.d === d); const c = {}; ST_ORDER.forEach((k) => { c[k] = 0; }); ns.forEach((n) => c[stats[n.id]]++);
         return `<a class="dom-row" href="#/fiches/d/${d}"><span class="small">${esc(l)}</span>${stackBar(c, ns.length)}<span class="small num muted">${c.acquis}/${ns.length}</span></a>`;
       }).join("")}</div>
@@ -565,7 +571,7 @@
   // =====================================================================
   // QCM : choix des sessions + banque
   // =====================================================================
-  const cfg = store.get("cfg2", { n: 20, mode: "imm", doms: Object.keys(DOMAINES), lvs: [1, 2, 3, 4], examMin: 60 });
+  const cfg = store.get("cfg2", { n: 20, mode: "imm", doms: Object.keys(DOMAINES).filter((d) => d !== "saretec"), lvs: [1, 2, 3, 4], examMin: 60 });
   function renderQcm(el, sub) {
     el.append(h(`
       <h1>QCM & examens</h1>
@@ -619,7 +625,7 @@
     $$("#cLv .chip", body).forEach((c) => c.onclick = () => { cfg.lvs = tog(cfg.lvs, +c.dataset.l); sync(); });
     $$("#cN .chip", body).forEach((c) => c.onclick = () => { cfg.n = +c.dataset.n; sync(); });
     $$("#cM .chip", body).forEach((c) => c.onclick = () => { cfg.mode = c.dataset.m; sync(); });
-    $("#allD", body).onclick = () => { cfg.doms = Object.keys(DOMAINES); sync(); };
+    $("#allD", body).onclick = () => { cfg.doms = TECH_DOMS.slice(); sync(); };
     $("#noD", body).onclick = () => { cfg.doms = []; sync(); };
     $("#examMin", body).onchange = (e) => { cfg.examMin = +e.target.value; sync(); };
     $("#goExam", body).onclick = () => startSession({ type: "exam", title: "Examen blanc — 80 questions", questions: examPick(80), mode: "fin", limit: cfg.examMin * 60 });
@@ -750,12 +756,12 @@
   // =====================================================================
   function renderExpress(el) {
     const stats = {}; NOTIONS.forEach((n) => { stats[n.id] = P.notionStat(n.id).status; });
-    const dangerous = NOTIONS.filter((n) => n.p <= 2 && ["nonacquis", "fragile"].includes(stats[n.id])).sort((a, b) => a.p - b.p || (stats[a.id] === "nonacquis" ? -1 : 1));
-    const fallback = dangerous.length ? dangerous : NOTIONS.filter((n) => n.p === 1 && stats[n.id] !== "acquis");
+    const dangerous = TECH_NOTIONS.filter((n) => n.p <= 2 && ["nonacquis", "fragile"].includes(stats[n.id])).sort((a, b) => a.p - b.p || (stats[a.id] === "nonacquis" ? -1 : 1));
+    const fallback = dangerous.length ? dangerous : TECH_NOTIONS.filter((n) => n.p === 1 && stats[n.id] !== "acquis");
     const confs = [];
     QUESTIONS.forEach((q) => (P.att[q.id] || []).forEach((a) => { if (!a.ok && a.ch) confs.push({ q, ch: a.ch, ts: a.ts }); }));
     confs.sort((a, b) => b.ts - a.ts);
-    const murs = NOTIONS.filter((n) => n.p === 1 && n.f.mur).flatMap((n) => n.f.mur);
+    const murs = TECH_NOTIONS.filter((n) => n.p === 1 && n.f.mur).flatMap((n) => n.f.mur);
     el.append(h(`
       <h1>⚡ Dernières 2 heures — veille du test</h1>
       <p class="lead">Uniquement : vos lacunes dangereuses, les confusions, les notions à fort rendement, les schémas et unités indispensables. Aucune nouvelle notion secondaire.</p>
@@ -909,10 +915,10 @@
     }
     return false;
   }
-  function drawExpertCase(el, c) {
+  function drawExpertCase(el, c, back) {
     const key = "xnote_" + c.id;
     el.append(h(`
-      <a href="#/cas" class="small">← Toutes les mises en situation</a>
+      ${back === false ? "" : `<a href="#/cas" class="small">← Toutes les mises en situation</a>`}
       <h1 style="margin-top:10px">${esc(c.titre)}</h1>
       <div class="row" style="margin-bottom:12px"><span class="tag">${esc(c.tag)}</span><span class="tag lv lv${c.niveau}">${LV[c.niveau]}</span></div>
       <div class="card enonce">${c.enonce}</div>
@@ -1166,6 +1172,272 @@
     $$("#eqcats .chip", el).forEach((c) => c.onclick = () => { cur = c.dataset.c; fill(); });
     $$("#check input", el).forEach((i) => i.onchange = () => { if (i.checked) done.add(+i.dataset.i); else done.delete(+i.dataset.i); store.set("checklist2", [...done]); });
     fill();
+  }
+
+  // =====================================================================
+  // MODULE SARETEC — ENTRETIEN RH & CONNAISSANCE DE L'ENTREPRISE
+  // =====================================================================
+  const SAR_TABS = [["60s", "Saretec en 60 s"], ["mission", "Entreprise à mission"], ["carbone", "Bas carbone"], ["distance", "Expertise à distance"],
+    ["metier", "Télé-expert : attentes"], ["economie", "Économie de la construction"], ["eco", "Capsens · Keywiiz · OSF"], ["pourquoi", "Pourquoi Saretec ?"],
+    ["rh", "Simulation RH (20 q)"], ["express", "Saretec express"], ["sources", "Sources"]];
+  const srcTags = (str) => esc(str).replace(/\[(S\/I|S|I)([^\]]*)\]/g, (m, t, rest) => `<span class="src src-${t === "I" ? "i" : "s"}">${t === "I" ? "Interprétation" : t === "S/I" ? "Source + interprétation" : "Source"}${rest.replace(/^,\s*/, " · ")}</span>`);
+  const words = (t) => (String(t).trim().match(/\S+/g) || []).length;
+  const speak = (t) => `${words(t)} mots ≈ ${Math.round(words(t) / 2.5)} s à l'oral`;
+  const SAR_NOTIONS = () => NOTIONS.filter((n) => n.d === "saretec").map((n) => n.id);
+
+  function analyseRH(text, attendus, specific) {
+    const nt = norm(text || "");
+    const items = attendus.map((a) => ({ t: a.t, hit: a.kw.length ? a.kw.some((k) => kwHit(nt, k, false)) : null }));
+    const dangers = SARETEC_DANGERS.concat(specific || []).filter((d) => d.kw.some((k) => kwHit(nt, k, true))).map((d) => d.t);
+    return { items, dangers };
+  }
+  function practiceBox(key, question, modele, after) {
+    const id = "pb" + Math.random().toString(36).slice(2, 8);
+    return {
+      html: `<div class="card practice" id="${id}"><b>${esc(question)}</b>
+        <textarea placeholder="Répondez comme à l'oral, avec vos mots…" style="margin-top:8px">${esc(store.get(key, ""))}</textarea>
+        <div class="row" style="margin-top:8px"><button class="btn sm primary pb-go">Voir la réponse modèle</button><span class="small muted pb-len"></span></div>
+        <div class="pb-out hidden"></div></div>`,
+      bind(root) {
+        const box = $("#" + id, root), ta = $("textarea", box), len = $(".pb-len", box);
+        const upd = () => { len.textContent = ta.value.trim() ? speak(ta.value) : ""; };
+        ta.oninput = () => { store.set(key, ta.value); upd(); }; upd();
+        $(".pb-go", box).onclick = () => {
+          if (words(ta.value) < 15 && !confirm("Vous n'avez presque rien écrit. Voir le modèle quand même ? (Vous progresserez plus en répondant d'abord.)")) return;
+          const out = $(".pb-out", box); out.classList.remove("hidden");
+          out.innerHTML = `<div class="callout ok" style="margin-top:10px"><b>Réponse modèle (${speak(modele)})</b><p style="margin:6px 0 0">${esc(modele)}</p></div>${after || ""}`;
+        };
+      }
+    };
+  }
+
+  function saretecDash() {
+    const st = (id) => badge(P.notionStat(id).status);
+    const rh = store.get("rhScores", {});
+    const done = Object.keys(rh).length, avg = done ? Math.round(Object.values(rh).reduce((a, b) => a + b, 0) / done) : 0;
+    const cats = [
+      ["1. L'entreprise", "60s", ["sar-entreprise", "sar-ecosysteme"], "Qui, quoi, pour qui, quels risques"],
+      ["2. Le métier de télé-expert", "metier", ["sar-teleexpert", "sar-economie"], "Missions, qualités attendues, qui décide"],
+      ["3. L'expertise à distance", "distance", ["sar-distance"], "Les étapes, l'intérêt, les limites"],
+      ["4. Entreprise à mission / bas carbone", "mission", ["sar-mission", "sar-carbone"], "Statut, objectifs, carbone des réparations"],
+      ["5. Questions RH", "rh", [], `${done}/20 questions travaillées${done ? ` · couverture moyenne ${avg} %` : ""}`]
+    ];
+    return `<h2>CE QUE JE DOIS SAVOIR POUR SARETEC</h2>
+      <p class="small muted">Préparation de l'entretien RH — séparée du test technique.</p>
+      <div class="grid grid-3 sar-dash">${cats.map(([t, tab, ns, d]) => `<a class="card card-link" href="#/saretec/${tab}"><h3>${t}</h3><p class="small muted" style="margin:0 0 6px">${esc(d)}</p><div class="row">${ns.map((id) => st(id)).join("")}</div></a>`).join("")}
+        <a class="card card-link urgent" href="#/saretec/express"><h3>⚡ Saretec express</h3><p class="small muted" style="margin:0">Les 20 éléments à savoir le jour J.</p></a></div>`;
+  }
+
+  function renderSaretec(el, sub) {
+    const tab = SAR_TABS.some((t) => t[0] === sub) ? sub : "60s";
+    const S = SARETEC;
+    const nQ = QUESTIONS.filter((q) => q.d === "saretec").length;
+    el.append(h(`
+      <h1>Saretec — entretien RH & connaissance de l'entreprise</h1>
+      <p class="lead">Objectif : répondre à « Qu'avez-vous retenu de Saretec ? » pendant 1 à 2 minutes, naturellement, sans réciter.</p>
+      <div class="callout small">Module RH <b>séparé</b> du test technique : ses ${nQ} QCM ne sont jamais mélangés aux examens et révisions techniques. <span class="src src-s">Source</span> = page officielle (${esc(S.consult)}) · <span class="src src-i">Interprétation</span> = mise en perspective pour l'entretien.</div>
+      <div class="tabs">${SAR_TABS.map(([k, l]) => `<a class="tab ${k === tab ? "on" : ""}" href="#/saretec/${k}">${l}</a>`).join("")}</div>
+      <div id="sb"></div>`));
+    const sb = $("#sb", el);
+    const qBtn = (ns, label) => `<button class="btn primary sm" data-sq="${ns.join(",")}">${label}</button>`;
+    const binders = [];
+
+    if (tab === "60s") {
+      const pb = practiceBox("sar_pitch", "Entraînez-vous : « Que savez-vous de Saretec ? » (visez 60 à 90 s)", S.pitch60, `<p class="small muted" style="margin-top:6px">Personnalisez : remplacez les formules par ce qui VOUS a marquée. Ne gardez qu'un ou deux chiffres.</p>`);
+      binders.push(pb);
+      sb.append(h(`<div class="grid grid-2">${S.sec60.map(([t, d], i) => `<div class="card s60"><span class="s60-n">${i + 1}</span><div><b>${esc(t)}</b><p class="small" style="margin:4px 0 0">${esc(d)}</p></div></div>`).join("")}</div>
+        <h2>À dire en 60 secondes</h2>${pb.html}
+        <h2>Ce que Saretec met en avant pour ses collaborateurs</h2><div class="card"><ul>${S.rejoindre.map((x) => `<li>${srcTags(x)}</li>`).join("")}</ul></div>
+        <div class="row" style="margin-top:12px">${qBtn(["sar-entreprise"], "QCM « L'entreprise »")}</div>`));
+    }
+    if (tab === "mission") {
+      const pb = practiceBox("sar_mission", S.mission.question + " (20-30 s)", S.mission.modele);
+      binders.push(pb);
+      sb.append(h(`
+        <div class="grid grid-2">
+          <div class="card"><h3>Juridiquement (loi PACTE)</h3><ol>${S.mission.juridique.map((x) => `<li>${esc(x)}</li>`).join("")}</ol></div>
+          <div class="card"><h3>Chez Saretec</h3><ul>${S.mission.saretec.map((x) => `<li>${srcTags(x)}</li>`).join("")}</ul></div>
+        </div>
+        <h2>Ce que le recruteur a cité → où le retrouver</h2>
+        <div class="table-wrap"><table><tbody>${S.mission.recruteur.map(([a, b]) => `<tr><th style="width:34%">${esc(a)}</th><td>${esc(b)}</td></tr>`).join("")}</tbody></table></div>
+        <p class="small muted">Correspondance établie entre les mots du recruteur et les objectifs statutaires officiels <span class="src src-i">Interprétation</span></p>
+        <div class="callout">${srcTags(S.mission.coherence)}</div>
+        ${murBox(["Mission = statuts + comité + contrôle externe", "« Un monde plus sûr, pour tous »"])}
+        <h2>Question d'entretien</h2>${pb.html}
+        <div class="card" style="margin-top:12px"><b>À éviter</b><ul>${S.mission.eviter.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+        <div class="row" style="margin-top:12px">${qBtn(["sar-mission"], "QCM « Entreprise à mission »")}</div>`));
+    }
+    if (tab === "carbone") {
+      const C = S.carbone;
+      const pbs = C.entretien.map((x, i) => practiceBox("sar_carb_" + i, x.q, x.m));
+      binders.push(...pbs);
+      sb.append(h(`
+        <div class="chain">${C.chaine.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
+        <div class="callout"><b>Pourquoi un cabinet d'expertise agit sur le carbone sans faire les travaux ?</b><br>Parce que l'expert est au centre (assureur, assuré, artisans) : ce qu'il constate, préconise et <b>chiffre</b> oriente la réparation qui sera réalisée.</div>
+        <h2>Ce que disent les sources (avec leur date)</h2>
+        <div class="card"><ul>${C.sources.map((x) => `<li>${srcTags(x)}</li>`).join("")}</ul>
+          <p class="small warn-line">⚠ La page « Objectif Bas Carbone » n'est pas datée : citez l'idée (réduire le carbone des réparations, sans surcoût) plutôt que les chiffres.</p></div>
+        <h2>Les leviers</h2>
+        <div class="table-wrap"><table><tbody>${C.leviers.map(([a, b]) => `<tr><th style="width:30%">${esc(a)}</th><td>${esc(b)}</td></tr>`).join("")}</tbody></table></div>
+        <div class="row" style="margin:14px 0">${qBtn(["sar-carbone"], "QCM bas carbone")}</div>
+        <h2>3 questions d'entretien</h2>${pbs.map((p) => p.html).join("")}
+        <h2>Mini-cas pratique</h2><div id="sarCase"></div>`));
+      drawExpertCase($("#sarCase", sb), C.cas, false);
+    }
+    if (tab === "distance") {
+      const D = S.distance;
+      sb.append(h(`
+        <p class="small muted">Schéma de travail type, reconstitué à partir des pages officielles (missions du télé-expert, modalités d'expertise) <span class="src src-i">Interprétation</span> — ce n'est pas un process interne publié.</p>
+        <div class="flow">${D.etapes.map(([t, r, moi], i) => `<div class="flow-step"><div class="flow-n">${i + 1}</div><div><b>${esc(t)}</b><div class="small">${esc(r)}</div><div class="small muted">Moi : ${esc(moi)}</div></div></div>`).join('<div class="flow-arrow">↓</div>')}</div>
+        <div class="grid grid-2" style="margin-top:16px">
+          <div class="card"><h3 class="ok-txt">Pourquoi c'est pertinent</h3><ul>${D.pour.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+          <div class="card"><h3 class="ko-txt">Ses limites → expertise sur site</h3><ul>${D.limites.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+        </div>
+        ${murBox(["Distance = rapide, mais savoir dire « il faut aller voir »", "Origine d'abord, puis dommages ; vue large → détail → repère"])}
+        <div class="row">${qBtn(["sar-distance"], "Questions sur les limites de la distance")}${qBtn(["tele-expertise"], "Questions techniques télé-expertise")}</div>`));
+    }
+    if (tab === "metier") {
+      sb.append(h(`
+        <div class="card"><b>Fiche métier officielle — missions</b> <span class="src src-s">Source</span><ul>
+          <li>Empathie et pédagogie pour accompagner les sinistrés <b>dans le cadre des garanties contractualisées</b></li>
+          <li>S'appuyer sur la visio pour évaluer les dommages</li><li>Analyser et déterminer les causes</li><li>Valider les garanties et chiffrer dommages et réparations</li></ul></div>
+        <h2>Les qualités attendues — concrètement</h2>
+        ${S.qualites.map((x, i) => `<details class="qual"><summary>${esc(x.q)}</summary><div>
+          <p><b>Dans le métier :</b> ${esc(x.sens)}</p>
+          <p><b>Question possible :</b> « ${esc(x.question)} »</p>
+          <textarea data-k="qual_${i}" placeholder="Votre réponse…">${esc(store.get("qual_" + i, ""))}</textarea>
+          <details class="inner"><summary>Voir une bonne réponse</summary><p class="callout ok" style="margin:6px 0">${esc(x.bonne)}</p></details>
+          <p class="ko-txt small">✗ À éviter : ${esc(x.erreur)}</p></div></details>`).join("")}
+        <div class="row" style="margin-top:12px">${qBtn(["sar-teleexpert"], "QCM « Le métier »")}</div>`));
+      $$("textarea[data-k]", sb).forEach((t) => { t.oninput = () => store.set(t.dataset.k, t.value); });
+    }
+    if (tab === "economie") {
+      sb.append(h(`
+        <div class="card"><h3>Études & Quantum <span class="src src-s">Source</span></h3><ul>
+          <li>Évaluer, chiffrer et répartir l'ensemble des coûts des travaux de réparation d'un sinistre</li>
+          <li>Interface entre assureur, expert, avocat, bureaux d'études et équipes d'exécution</li>
+          <li>Assistance expertise dommage (en lien avec l'inspecteur de compagnie et l'expert), garants financiers (constructeurs de maisons défaillants), efficacité énergétique</li>
+          <li>Fiche métier « économiste » : des économies significatives <b>à qualité équivalente</b>, pas « réparer pour pas cher »</li></ul></div>
+        <h2>Qui fait quoi ?</h2>
+        <div class="table-wrap"><table><thead><tr><th>Verbe</th><th>Ce que c'est</th><th>Qui</th></tr></thead><tbody>${S.economie.map(([a, b, c]) => `<tr><th>${esc(a)}</th><td>${esc(b)}</td><td>${esc(c)}</td></tr>`).join("")}</tbody></table></div>
+        <div class="callout warn"><b>À ne jamais dire :</b> « l'expert décide de l'indemnisation ». L'expert fournit une analyse et un chiffrage dans son rapport ; <b>l'assureur décide</b> et règle l'assuré.</div>
+        <div class="callout"><b>Lien avec mon poste</b> : mon métré et mon chiffrage de télé-expert suivent la même logique que l'économiste (ouvrage → dommage → travaux → quantité → prix), à l'échelle des sinistres courants.</div>
+        ${murBox(["Constater → métrer → chiffrer → expertiser → l'assureur décide"])}
+        <div class="row">${qBtn(["sar-economie"], "QCM constater / métrer / chiffrer / décider")}<a class="btn sm" href="#/fiches/chaine-chiffrage">Fiche technique « logique de chiffrage »</a></div>`));
+    }
+    if (tab === "eco") {
+      sb.append(h(`<div class="grid grid-3">${S.eco.map((c) => `<div class="card"><h3>${esc(c.t)}</h3><ul class="small">${c.items.map((x) => `<li>${srcTags(x)}</li>`).join("")}</ul>${murBox([c.mur])}</div>`).join("")}</div>
+        <div class="row" style="margin-top:12px">${qBtn(["sar-ecosysteme"], "QCM Capsens · Keywiiz · OSF")}</div>`));
+    }
+    if (tab === "pourquoi") {
+      const P2 = S.pourquoi;
+      sb.append(h(`
+        <p>Construisez <b>votre</b> réponse bloc par bloc (1 à 2 phrases chacun), puis assemblez-la. Visez 45 à 90 secondes.</p>
+        ${P2.blocs.map(([t, consigne, ex], i) => `<div class="card pq"><b>${i + 1}. ${esc(t)}</b><div class="small muted">${esc(consigne)} — ex. : « ${esc(ex)} »</div><textarea data-k="pq_${i}" placeholder="Votre phrase…">${esc(store.get("pq_" + i, ""))}</textarea></div>`).join("")}
+        <div class="row" style="margin-top:10px"><button class="btn primary" id="pqGo">Assembler et vérifier ma réponse</button></div>
+        <div id="pqOut"></div>
+        <h2>5 formulations possibles (à adapter, pas à réciter)</h2>
+        <div class="grid grid-2">${P2.formulations.map((f) => `<div class="card small">${esc(f)}</div>`).join("")}</div>
+        <div class="card" style="margin-top:12px"><b class="ko-txt">À éviter absolument</b><ul>${P2.eviter.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`));
+      $$("textarea[data-k]", sb).forEach((t) => { t.oninput = () => store.set(t.dataset.k, t.value); });
+      $("#pqGo", sb).onclick = () => {
+        const parts = P2.blocs.map((_, i) => String(store.get("pq_" + i, "") || "").trim());
+        const txt = parts.filter(Boolean).join(" ");
+        const missing = P2.blocs.filter((_, i) => !parts[i]).map((b) => b[0]);
+        const dang = analyseRH(txt, [], [{ t: "Avantages (télétravail, salaire) mis en avant", kw: ["teletravail", "salaire", "avantages"] }]).dangers;
+        const sec = Math.round(words(txt) / 2.5);
+        $("#pqOut", sb).innerHTML = `<div class="card" style="margin-top:12px"><h3>Votre réponse assemblée</h3><p>${txt ? esc(txt) : "<i>Rien à assembler.</i>"}</p>
+          <p class="small muted">${speak(txt)} ${sec > 100 ? "— trop long : gardez 1 phrase par bloc." : sec && sec < 30 ? "— un peu court : développez l'élément Saretec et votre profil." : ""}</p>
+          ${missing.length ? `<p class="small warn-line">Blocs manquants : ${missing.map(esc).join(", ")}</p>` : `<p class="small ok-txt">Les 6 blocs sont présents.</p>`}
+          ${dang.length ? `<p class="small ko-txt">⚠ ${dang.map(esc).join(" · ")}</p>` : ""}
+          <p class="small muted">Test final : cette réponse pourrait-elle être dite à une autre entreprise ? Si oui, renforcez le bloc 5 (un élément précis et vérifié sur Saretec).</p></div>`;
+      };
+    }
+    if (tab === "rh") drawRH(sb);
+    if (tab === "express") {
+      const E = S.express;
+      sb.append(h(`<p>20 éléments maximum. À relire le matin de l'entretien.</p>
+        <div class="grid grid-3">
+          <div class="card lvl lvl-r"><b>🟥 À SAVOIR PAR CŒUR</b><ol>${E.rouge.map((x) => `<li>${esc(x)}</li>`).join("")}</ol></div>
+          <div class="card lvl lvl-y"><b>🟨 À SAVOIR EXPLIQUER</b><ol>${E.jaune.map((x) => `<li>${esc(x)}</li>`).join("")}</ol></div>
+          <div class="card lvl lvl-g"><b>🟩 À AVOIR COMPRIS</b><ol>${E.vert.map((x) => `<li>${esc(x)}</li>`).join("")}</ol></div>
+        </div>
+        ${murBox(["Saretec expertise, l'assureur décide", "Mission = statuts + comité + contrôle externe", "Bas carbone = réparations, sans surcoût", "Distance = rapide, mais savoir dire « il faut aller voir »"])}
+        <div class="row">${qBtn(SAR_NOTIONS(), "QCM Saretec (15 questions)")}</div>`));
+    }
+    if (tab === "sources") {
+      sb.append(h(`<div class="callout warn small">Règles appliquées : priorité aux pages officielles ; chaque chiffre est daté ou signalé comme non daté ; les interprétations sont marquées. Dernière consultation : ${esc(S.consult)}. En cas de changement, la page officielle fait foi.</div>
+        <div class="table-wrap"><table><thead><tr><th>Ressource</th><th>Utilisée pour</th></tr></thead><tbody>${S.sources.map(([t, u, d]) => `<tr><td><a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a></td><td class="small">${esc(d)}</td></tr>`).join("")}</tbody></table></div>
+        <div class="card" style="margin-top:12px"><b>Points de vigilance</b><ul class="small">
+          <li>Effectifs : la même page indique « 2 000 femmes et hommes » (texte) et « 2 500 collaborateurs » (chiffres clés) → dites « plus de 2 000 collaborateurs ».</li>
+          <li>Les chiffres de la page « Objectif Bas Carbone » (−7 %/an, pilotes Gan/MAIF, nombre de désignations) ne sont pas datés.</li>
+          <li>Le rapport de mission 2025-2026 n'a été parcouru qu'au niveau de l'édito : lisez le sommaire avant l'entretien pour pouvoir en citer un point.</li>
+          <li>Les vidéos YouTube et le LinkedIn n'ont pas été analysés ici.</li></ul></div>`));
+    }
+    binders.forEach((b) => b.bind(sb));
+    $$("[data-sq]", sb).forEach((b) => {
+      b.onclick = () => {
+        const ns = b.dataset.sq.split(",");
+        const qs = shuffle(QUESTIONS.filter((q) => ns.includes(q.n)));
+        startSession({ type: "saretec", title: "Saretec — " + b.textContent, questions: qs.slice(0, 15), mode: "imm" });
+      };
+    });
+  }
+
+  function drawRH(sb) {
+    const R = SARETEC_RH;
+    let i = Math.min(store.get("rhIdx", 0), R.length - 1);
+    const scores = store.get("rhScores", {});
+    sb.append(h(`<p>Simulation de l'entretien RH : répondez <b>avant</b> de voir l'analyse. Chronométrez-vous à voix haute si possible (30 à 90 s par réponse).</p>
+      <div class="palette" id="rhPal"></div><div id="rhQ" style="margin-top:12px"></div><div id="rhFoot"></div>`));
+    let t0 = null, tInt = null;
+    const pal = () => {
+      $("#rhPal", sb).innerHTML = R.map((_, j) => `<button data-j="${j}" class="${scores[j] !== undefined ? "answered" : ""} ${j === i ? "current" : ""}" title="${esc(R[j].q)}">${j + 1}</button>`).join("");
+      $$("#rhPal button", sb).forEach((b) => { b.onclick = () => { i = +b.dataset.j; store.set("rhIdx", i); draw(); }; });
+    };
+    function draw() {
+      pal(); clearInterval(tInt); tInt = null;
+      const r = R[i], key = "rh_" + i;
+      $("#rhQ", sb).innerHTML = `<div class="card">
+        <div class="small muted">Question ${i + 1} / ${R.length}</div>
+        <div class="question">${esc(r.q)}</div>
+        <textarea id="rhA" style="min-height:140px" placeholder="Votre réponse, avec vos mots…">${esc(store.get(key, ""))}</textarea>
+        <div class="row" style="margin-top:8px"><button class="btn sm" id="rhT">⏱ Chrono oral</button><span class="small muted" id="rhL"></span><span class="spacer"></span>
+          <button class="btn sm ghost" id="rhP" ${i === 0 ? "disabled" : ""}>← Préc.</button><button class="btn primary" id="rhGo">Analyser ma réponse</button><button class="btn sm ghost" id="rhN" ${i === R.length - 1 ? "disabled" : ""}>Suiv. →</button></div>
+        <div id="rhOut"></div></div>`;
+      const ta = $("#rhA", sb), L = $("#rhL", sb);
+      const upd = () => { L.textContent = ta.value.trim() ? speak(ta.value) : ""; };
+      ta.oninput = () => { store.set(key, ta.value); upd(); }; upd();
+      $("#rhT", sb).onclick = (e) => {
+        if (tInt) { clearInterval(tInt); tInt = null; e.target.textContent = `⏱ ${Math.round((Date.now() - t0) / 1000)} s — relancer`; return; }
+        t0 = Date.now(); tInt = setInterval(() => { e.target.textContent = `⏹ ${Math.round((Date.now() - t0) / 1000)} s`; }, 500);
+      };
+      $("#rhP", sb).onclick = () => { i--; store.set("rhIdx", i); draw(); };
+      $("#rhN", sb).onclick = () => { i++; store.set("rhIdx", i); draw(); };
+      $("#rhGo", sb).onclick = () => {
+        if (words(ta.value) < 12) { alert("Répondez d'abord (quelques phrases) : l'analyse porte sur VOTRE réponse."); return; }
+        const res = analyseRH(ta.value, r.a, r.d);
+        const scored = res.items.filter((x) => x.hit !== null);
+        const pct = scored.length ? Math.round((scored.filter((x) => x.hit).length / scored.length) * 100) : 0;
+        scores[i] = pct; store.set("rhScores", scores); pal();
+        const sec = Math.round(words(ta.value) / 2.5);
+        $("#rhOut", sb).innerHTML = `<h3 style="margin-top:16px">Analyse — couverture ${pct} %</h3>
+          <div class="grid grid-2">
+            <div class="card"><b class="ok-txt">✔ Présent</b><ul>${res.items.filter((x) => x.hit).map((x) => `<li>${esc(x.t)}</li>`).join("") || "<li class='muted'>—</li>"}</ul>
+              <b style="color:var(--warn)">◐ Manquant ou non formulé</b><ul>${res.items.filter((x) => x.hit === false).map((x) => `<li>${esc(x.t)}</li>`).join("") || "<li class='muted'>—</li>"}</ul>
+              ${res.items.some((x) => x.hit === null) ? `<p class="small muted">À vérifier vous-même : ${res.items.filter((x) => x.hit === null).map((x) => esc(x.t)).join(" ; ")}</p>` : ""}</div>
+            <div class="card"><b class="ko-txt">⚠ Formulations dangereuses</b><ul>${res.dangers.map((d) => `<li class="ko-txt">${esc(d)}</li>`).join("") || "<li class='ok-txt'>Aucune détectée</li>"}</ul>
+              <p class="small muted">Durée estimée : ${sec} s ${sec > 100 ? "— trop long, resserrez." : sec < 20 ? "— un peu court, ajoutez un exemple concret." : "— bonne longueur."}</p></div>
+          </div>
+          <div class="callout ok"><b>Version améliorée, naturelle</b> (à reformuler avec vos mots)<p style="margin:6px 0 0">${esc(r.m)}</p></div>
+          <p class="small muted">L'analyse repère des mots-clés : si vous avez exprimé une idée autrement, considérez-la comme présente.</p>`;
+      };
+      const tot = Object.keys(scores).length;
+      $("#rhFoot", sb).innerHTML = tot ? `<p class="small muted" style="margin-top:10px">${tot}/20 questions travaillées. <button class="btn sm ghost" id="rhReset">Réinitialiser la simulation</button></p>` : "";
+      const rr = $("#rhReset", sb);
+      if (rr) rr.onclick = () => { if (confirm("Effacer vos réponses et scores RH ?")) { R.forEach((_, j) => store.set("rh_" + j, "")); store.set("rhScores", {}); store.set("rhIdx", 0); router(); } };
+    }
+    draw();
   }
 
   router();
